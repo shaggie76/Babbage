@@ -20,6 +20,7 @@ namespace Babbage
 
         private const int CELL_WIDTH = 25;
         private const int CELL_HEIGHT = 25;
+        private const int DIVIDER_SIZE = 2;
 
         private int[,] mCells = new int[N, N];
         private int mPending = N * N;
@@ -462,7 +463,7 @@ namespace Babbage
 
         private void Board_Load(object sender, EventArgs e)
         {
-            this.ClientSize = new Size(N * CELL_WIDTH, N * CELL_HEIGHT);
+            this.ClientSize = new Size((N * CELL_WIDTH) + (2 * DIVIDER_SIZE), (N * CELL_HEIGHT) + (2 * DIVIDER_SIZE));
 
             this.Controls.Add(mGridView);
 
@@ -503,6 +504,11 @@ namespace Babbage
 
             mGridView.CellValidating += new DataGridViewCellValidatingEventHandler(CellValidating);
             mGridView.CellValueChanged += new DataGridViewCellEventHandler(OnValueChanged);
+
+            mGridView.Columns[B - 1].DividerWidth = 2;
+            mGridView.Columns[(2 * B) - 1].DividerWidth = 2;
+            mGridView.Rows[B - 1].DividerHeight = 2;
+            mGridView.Rows[(2 * B) - 1].DividerHeight = 2;
 
             // Sample puzzle copied from http://www.sudoku.com/ 
             string[] sample = { "7", "5", "", "4", "6", "2", "", "9", "1", "1", "", "", "", "", "", "5", "2", "4", "4", "9", "2", "", "5", "1", "7", "", "", "", "2", "7", "", "", "", "", "", "", "", "", "4", "", "", "", "6", "", "", "", "", "", "", "", "", "2", "4", "", "", "", "9", "7", "1", "", "4", "6", "2", "6", "7", "1", "", "", "", "", "", "8", "2", "4", "", "6", "9", "8", "", "7", "3" };
