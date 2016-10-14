@@ -439,6 +439,11 @@ namespace Babbage
         
         void ShowCellToolTip(object sender, DataGridViewCellFormattingEventArgs e)
         {
+            if((e.RowIndex >= N) || (e.ColumnIndex >= N))
+            {
+                return;
+            }
+
             DataGridViewCell cell = mGridView.Rows[e.RowIndex].Cells[e.ColumnIndex];
             int bits = mCells[e.RowIndex, e.ColumnIndex];
             
@@ -520,15 +525,19 @@ namespace Babbage
 
             mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
 
-            // Sample puzzle copied from http://www.sudoku.com/ 
-            string[] sample = { "7", "5", "", "4", "6", "2", "", "9", "1", "1", "", "", "", "", "", "5", "2", "4", "4", "9", "2", "", "5", "1", "7", "", "", "", "2", "7", "", "", "", "", "", "", "", "", "4", "", "", "", "6", "", "", "", "", "", "", "", "", "2", "4", "", "", "", "9", "7", "1", "", "4", "6", "2", "6", "7", "1", "", "", "", "", "", "8", "2", "4", "", "6", "9", "8", "", "7", "3" };
+            // Sample puzzle copied from http://www.sudoku.com/ (vim select gJ to join without spaces)
+            char[] sample = "1 87396     24    7      2 4    7 3 3  5 4  6 8 6    4 7      1    78     13654 2".ToCharArray();
+            Debug.Assert(sample.Length == N * N);
 
             int i = 0;
             for(int row = 0; row < N; ++row)
             {
                 for(int col = 0; col < N; ++col, ++i)
                 {
-                    mGridView.Rows[row].Cells[col].Value = sample[i];
+                    if(sample[i] != ' ')
+                    {
+                        mGridView.Rows[row].Cells[col].Value = sample[i];
+                    }
                 }
             }
         }
