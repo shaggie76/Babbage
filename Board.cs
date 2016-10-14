@@ -71,8 +71,147 @@ namespace Babbage
         // Finds a value that is isolated by row, column or block
         private bool FindIsolated()
         {
+            for(int v = 1, bit = 1; v <= N; ++v, bit <<= 1)
+            {
+                for(int row = 0; row < N; ++row)
+                {
+                    int count = 0;
+                    int col = N;
 
+                    for(int c = 0; c < N; ++c)
+                    {
+                        int cellValue = mCells[row, c]; 
+
+                        if((cellValue & bit) != 0)
+                        {
+                            if((cellValue & CONFIRMED) != 0)
+                            {
+                                count = N;
+                                break;
+                            }
+
+                            ++count;
+
+                            if(count > 1)
+                            {
+                                break;    
+                            }
+
+                            col = c;
+                        }
+                    }
+
+                    if(count == 1)
+                    {
+                        Debug.Print("Isolated [" + row + "," + col + "] as " + v + " by row");
+                        mGridView.Rows[row].Cells[col].Value = v;
+                        return(true);
+                    }
+                }
+
+                for(int col = 0; col < N; ++col)
+                {
+                    int count = 0;
+                    int row = N;
+
+                    for(int r = 0; r < N; ++r)
+                    {
+                        int cellValue = mCells[r, col]; 
+
+                        if((cellValue & bit) != 0)
+                        {
+                            if((cellValue & CONFIRMED) != 0)
+                            {
+                                count = N;
+                                break;
+                            }
+
+                            ++count;
+
+                            if(count > 1)
+                            {
+                                break;    
+                            }
+
+                            row = r;
+                        }
+                    }
+
+                    if(count == 1)
+                    {
+                        Debug.Print("Isolated [" + row + "," + col + "] as " + v + " by col");
+                        mGridView.Rows[row].Cells[col].Value = v;
+                        return(true);
+                    }
+                }
+
+                for(int br = 0; br < B; ++br)
+                {
+                    int rowBegin = br * B;
+                    int rowEnd = rowBegin + B;
+
+                    for(int bc = 0; bc < B; ++bc)
+                    {
+                        int colBegin = bc * B;
+                        int colEnd = colBegin + B;
+
+                        int count = 0;
+                        int row = N;
+                        int col = N;
+
+                        for(int r = rowBegin; r < rowEnd; ++r)
+                        {
+                            for(int c = colBegin; c < colEnd; ++c)
+                            {
+                                int cellValue = mCells[r, c]; 
+
+                                if((cellValue & bit) != 0)
+                                {
+                                    if((cellValue & CONFIRMED) != 0)
+                                    {
+                                        count = N;
+                                        break;
+                                    }
+
+                                    ++count;
+
+                                    if(count > 1)
+                                    {
+                                        break;    
+                                    }
+
+                                    row = r;
+                                    col = c;
+                                }
+                            }
+                        }
+
+                        if(count == 1)
+                        {
+                            mGridView.Rows[row].Cells[col].Value = v;
+                            return(true);
+                        }
+                    }
+                }
+            }
+            
             return(false);
+        }
+
+        private void MaskCell(ref bool masked, int row, int col, int bit)
+        {
+            int cellValue = mCells[row, col]; 
+
+            if((cellValue & bit) == 0)
+            {
+                return;
+            }
+
+            Debug.Assert((cellValue & CONFIRMED) == 0);
+            cellValue &= ~bit;
+            Debug.Assert((cellValue & MASK) != 0);
+            mCells[row, col] = cellValue;
+            masked = true;
         }
 
         // Excludes a value from all elements in a row except for the given block (returns if anything was masked)
@@ -85,26 +224,12 @@ namespace Babbage
 
             for(int col = 0; col < omitBegin; ++col)
             {
-                int cellValue = mCells[row, col]; 
-
-                if((cellValue & bit) != 0)
-                {
-                    Debug.Assert((cellValue & CONFIRMED) == 0);
-                    masked = true;
-                    mCells[row, col] = cellValue ^ bit;
-                }
+                MaskCell(ref masked, row, col, bit);
             }
 
             for(int col = omitEnd; col < N; ++col)
             {
-                int cellValue = mCells[row, col];
-
-                if((cellValue & bit) != 0)
-                {
-                    Debug.Assert((cellValue & CONFIRMED) == 0);
-                    masked = true;
-                    mCells[row, col] = cellValue ^ bit;
-                }
+                MaskCell(ref masked, row, col, bit);
             }
 
             return(masked);
@@ -120,26 +245,12 @@ namespace Babbage
 
             for(int row = 0; row < omitBegin; ++row)
             {
-                int cellValue = mCells[row, col]; 
-
-                if((cellValue & bit) != 0)
-                {
-                    Debug.Assert((cellValue & CONFIRMED) == 0);
-                    masked = true;
-                    mCells[row, col] = cellValue ^ bit;
-                }
+                MaskCell(ref masked, row, col, bit);
             }
 
             for(int row = omitEnd; row < N; ++row)
             {
-                int cellValue = mCells[row, col];
-
-                if((cellValue & bit) != 0)
-                {
-                    Debug.Assert((cellValue & CONFIRMED) == 0);
-                    masked = true;
-                    mCells[row, col] = cellValue ^ bit;
-                }
+                MaskCell(ref masked, row, col, bit);
             }
 
             return(masked);
@@ -242,13 +353,18 @@ namespace Babbage
             }
         }
 
-        private void SetValue(int r, int c, int v)
+        // Note: value is 1-based here
+        private void OnValueChanged(int r, int c, int value)
         {
             Debug.Assert(mPending > 0);
+            Debug.Assert((value > 0) && (value <= N));
 
-            int bit = 1 << (v - 1);
+            int bit = 1 << (value - 1);
             int cellValue = mCells[r, c]; 
-            Debug.Assert((cellValue & bit) != 0);
+            Debug.Assert((cellValue & (bit | CONFIRMED)) == bit);
+
+            mCells[r, c] = MASK; // Temp to avoid DebugAssert
+
             --mPending;
 
             // Mask out bit in row, column and block
@@ -257,11 +373,13 @@ namespace Babbage
             for(int row = 0; row < N; ++row)
             {
                 mCells[row, c] &= mask;
+                Debug.Assert((mCells[row, c] & MASK) != 0);
             }
 
             for(int col = 0; col < N; ++col)
             {
                 mCells[r, col] &= mask;
+                Debug.Assert((mCells[r, col] & MASK) != 0);
             }
 
             int rowBegin = r - (r % B);
@@ -275,6 +393,7 @@ namespace Babbage
                 for(int col = colBegin; col < colEnd; ++col)
                 {
                     mCells[row, col] &= mask;
+                    Debug.Assert((mCells[row, col] & MASK) != 0);
                 }
             }
 
@@ -299,7 +418,7 @@ namespace Babbage
             e.Cancel = true;
         }
 
-        private void CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        private void OnValueChanged(object sender, DataGridViewCellEventArgs e)
         {
             int r = e.RowIndex;
             int c = e.ColumnIndex;
@@ -314,7 +433,7 @@ namespace Babbage
             bool parsed = int.TryParse(value, out v);
             Debug.Assert(parsed && (v >= 1) && (v <= N));
             
-            SetValue(r, c, v);
+            OnValueChanged(r, c, v);
         }
         
         void ShowCellToolTip(object sender, DataGridViewCellFormattingEventArgs e)
@@ -383,7 +502,7 @@ namespace Babbage
             mPending = N * N;
 
             mGridView.CellValidating += new DataGridViewCellValidatingEventHandler(CellValidating);
-            mGridView.CellValueChanged += new DataGridViewCellEventHandler(CellValueChanged);
+            mGridView.CellValueChanged += new DataGridViewCellEventHandler(OnValueChanged);
 
             // Sample puzzle copied from http://www.sudoku.com/ 
             string[] sample = { "7", "5", "", "4", "6", "2", "", "9", "1", "1", "", "", "", "", "", "5", "2", "4", "4", "9", "2", "", "5", "1", "7", "", "", "", "2", "7", "", "", "", "", "", "", "", "", "4", "", "", "", "6", "", "", "", "", "", "", "", "", "2", "4", "", "", "", "9", "7", "1", "", "4", "6", "2", "6", "7", "1", "", "", "", "", "", "8", "2", "4", "", "6", "9", "8", "", "7", "3" };
