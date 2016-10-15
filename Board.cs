@@ -413,9 +413,15 @@ namespace Babbage
             bool parsed = int.TryParse(value, out v);
             if(parsed && (v >= 1) && (v <= N))
             {
-                return;
+                int bit = 1 << (v - 1);
+                int cellValue = mCells[e.RowIndex, e.ColumnIndex];
+
+                if((cellValue & bit) != 0)
+                {
+                    return;
+                }
             }
-            
+
             e.Cancel = true;
         }
 
@@ -439,11 +445,6 @@ namespace Babbage
         
         void ShowCellToolTip(object sender, DataGridViewCellFormattingEventArgs e)
         {
-            if((e.RowIndex >= N) || (e.ColumnIndex >= N))
-            {
-                return;
-            }
-
             DataGridViewCell cell = mGridView.Rows[e.RowIndex].Cells[e.ColumnIndex];
             int bits = mCells[e.RowIndex, e.ColumnIndex];
             
@@ -473,13 +474,17 @@ namespace Babbage
             this.Controls.Add(mGridView);
 
             mGridView.ColumnCount = N;
-            mGridView.RowCount = N;
+            mGridView.RowCount = N + 1; // AllowUserToAddRows = false seems to require one more
 
             mGridView.AllowUserToResizeColumns = false;
-            mGridView.AllowUserToResizeRows = false;
+            mGridView.AllowUserToOrderColumns = false;
 
             mGridView.RowHeadersVisible = false;
             mGridView.ColumnHeadersVisible = false;
+                        
+            mGridView.AllowUserToAddRows = false;
+            mGridView.AllowUserToDeleteRows = false;
+            mGridView.AllowUserToResizeRows = false;
 
             mGridView.MultiSelect = false;
             mGridView.Dock = DockStyle.Fill;
@@ -526,7 +531,8 @@ namespace Babbage
             mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
 
             // Sample puzzle copied from http://www.sudoku.com/ (vim select gJ to join without spaces)
-            char[] sample = "1 87396     24    7      2 4    7 3 3  5 4  6 8 6    4 7      1    78     13654 2".ToCharArray();
+            char[] sample = " 26    4    5 6    39   81 3   2   7   8 3   6   1   9 15   37    7 2    8     2 ".ToCharArray();
+            //char[] sample = "26        5769 2      21 5 5 28 4913 931 247 1847 96 5 2 91      8 7356        97".ToCharArray();
             Debug.Assert(sample.Length == N * N);
 
             int i = 0;
@@ -536,7 +542,7 @@ namespace Babbage
                 {
                     if(sample[i] != ' ')
                     {
-                        mGridView.Rows[row].Cells[col].Value = sample[i];
+                        // mGridView.Rows[row].Cells[col].Value = sample[i];
                     }
                 }
             }
