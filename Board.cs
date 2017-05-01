@@ -25,6 +25,25 @@ namespace Babbage
         private int[,] mCells = new int[N, N];
         private int mPending = N * N;
         private DataGridView mGridView = new DataGridView();
+
+        class PotentialCells : IComparable 
+        {
+            public int CompareTo(object otherObj)
+            {
+                PotentialCells other = (PotentialCells)otherObj;
+
+                if(cellMask < other.cellMask) { return(-1); }
+                if(cellMask > other.cellMask) { return(1); }
+
+                return(0);
+            }
+
+            public int number;
+            public int cellMask;
+            public int cellCount;
+        };
+
+        private PotentialCells[] mPotentialCells = new PotentialCells[N];
         
         static int BitCount(int bits)
         {
@@ -36,6 +55,11 @@ namespace Babbage
         {
             InitializeComponent();
             Application.Idle += HandleApplicationIdle;
+
+            for(int i = 0; i < N; ++i)
+            {
+                mPotentialCells[i] = new PotentialCells();
+            }
         }
 
         // Cells that have been confirmed to have only one value
@@ -334,6 +358,194 @@ namespace Babbage
             return(false);
         }
 
+        private void ResetPotentialCells()
+        {
+            for(int i = 0; i < N; ++i)
+            {
+                PotentialCells pc = mPotentialCells[i];
+                pc.number = i;
+                pc.cellMask = 0;
+                pc.cellCount = 0;
+            }
+        }
+
+        // cellNumber can be row, col or block index
+        // Transpose bits (possible values in cell)
+        // to cellMask (possible cells with value)
+        private void UpdatePotentialCells(int bits, int cellNumber)
+        {
+            if((bits & CONFIRMED) != 0)
+            {
+                return;
+            }
+
+            for(int number = 0, bit = 1; number < N; ++number, bit <<= 1) 
+            {
+                if((bits & bit) != 0)
+                {
+                    PotentialCells pc = mPotentialCells[number];
+
+                    pc.cellMask |= (1 << cellNumber);
+                    ++pc.cellCount;
+                }
+            }
+        }
+        
+        private int FindPotentialCellSet(int begin, out int bitMask)
+        {
+            bitMask = 0;
+
+            int i;
+             
+            for(i = begin; i < N;)
+            {
+                PotentialCells pc = mPotentialCells[i];
+
+                if(pc.cellCount == 0)
+                {
+                    ++i;
+                    continue;
+                }
+
+                int end = i + pc.cellCount;
+
+                if(end >= N)
+                {
+                    break;
+                }
+
+                int j;
+                for(j = i + 1; j < end; ++j)
+                {
+                    if(mPotentialCells[j].cellMask != pc.cellMask)
+                    {
+                        break;
+                    }
+                }
+
+                if(j < end)
+                {
+                    i = j;
+                    continue;
+                }
+
+                for(j = i; j < end; ++j)
+                {
+                    bitMask |= (1 << mPotentialCells[j].number);
+                }
+
+                bitMask = ~bitMask;
+
+                return(i);
+            }
+
+            return(N);
+        }
+
+        private bool FindGroupedExclusions()
+        {
+            // value -> cells it is potentially in
+            
+            // By Row
+            for(int row = 0; row < N; ++row)
+            {
+                ResetPotentialCells();
+
+                for(int col = 0; col < N; ++col)
+                {
+                    UpdatePotentialCells(mCells[row, col], col);
+                }
+
+                Array.Sort(mPotentialCells);    
+
+                int bitMask;
+
+                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
+                {
+                    int cellMask = mPotentialCells[i].cellMask;
+                    bool excluded = false;
+                    int bit = 1;
+                    
+                    // Do any of the cells referenced in the cellMask have bits not in the bitMask?
+                    for(int col = 0; (col < N) && (cellMask != 0); ++col, bit <<= 1)
+                    {
+                        if((cellMask & bit) != 0)
+                        {
+                            cellMask &= ~bit;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        if((mCells[row, col] & bitMask) != 0)
+                        {
+                            mCells[row, col] &= ~bitMask;
+                            excluded = true;
+                        }
+                    }
+
+                    if(excluded)
+                    {
+                        Debug.Print("Masked row " + row + " with exclusion");
+                        return(true);
+                    }
+                }
+            }
+
+            // By Column
+            for(int col = 0; col < N; ++col)
+            {
+                ResetPotentialCells();
+
+                for(int row = 0; row < N; ++row)
+                {
+                    UpdatePotentialCells(mCells[row, col], row);
+                }
+
+                Array.Sort(mPotentialCells);    
+
+                int bitMask;
+
+                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
+                {
+                    int cellMask = mPotentialCells[i].cellMask;
+                    bool excluded = false;
+                    int bit = 1;
+                    
+                    // Do any of the cells referenced in the cellMask have bits not in the bitMask?
+                    for(int row = 0; (row < N) && (cellMask != 0); ++row, bit <<= 1)
+                    {
+                        if((cellMask & bit) != 0)
+                        {
+                            cellMask &= ~bit;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        if((mCells[row, col] & bitMask) != 0)
+                        {
+                            mCells[row, col] &= ~bitMask;
+                            excluded = true;
+                        }
+                    }
+
+                    if(excluded)
+                    {
+                        Debug.Print("Masked col " + col + " with exclusion");
+                        return(true);
+                    }
+                }
+            }
+
+            // TODO: By Block
+
+        
+            return(false);
+        }
+
         private void HandleApplicationIdle(object sender, EventArgs e)
         {
             Debug.Assert(mPending > 0);
@@ -342,7 +554,8 @@ namespace Babbage
             (
                 FindConfirmed() ||
                 FindIsolated() ||
-                FindCollinear()
+                FindCollinear() ||
+                FindGroupedExclusions()
             )
             {
                 if(mPending == 0)
@@ -531,8 +744,7 @@ namespace Babbage
             mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
 
             // Sample puzzle copied from http://www.sudoku.com/ (vim select gJ to join without spaces)
-            char[] sample = " 26    4    5 6    39   81 3   2   7   8 3   6   1   9 15   37    7 2    8     2 ".ToCharArray();
-            //char[] sample = "26        5769 2      21 5 5 28 4913 931 247 1847 96 5 2 91      8 7356        97".ToCharArray();
+            char[] sample = "   3 2 1  2   6  9  7 8    4      96  3 1 5  69      7    2 9  8  5   2  6 7 1   ".ToCharArray();
             Debug.Assert(sample.Length == N * N);
 
             int i = 0;
