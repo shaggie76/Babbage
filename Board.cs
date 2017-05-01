@@ -26,7 +26,18 @@ namespace Babbage
         private int mPending = N * N;
         private DataGridView mGridView = new DataGridView();
 
-        class PotentialCells : IComparable 
+        private struct Coordinates
+        {
+            public int row;
+            public int col;
+        };
+
+        // By Row, By Column, By Block
+        private const int NUM_PATTERNS = N + N + N;
+        private Coordinates[,] mPatterns = new Coordinates[NUM_PATTERNS, N];
+        private String[] mPatternLabels = new String[NUM_PATTERNS];
+
+        private class PotentialCells : IComparable 
         {
             public int CompareTo(object otherObj)
             {
@@ -55,10 +66,66 @@ namespace Babbage
         {
             InitializeComponent();
             Application.Idle += HandleApplicationIdle;
+            int i;
 
-            for(int i = 0; i < N; ++i)
+            for(i = 0; i < N; ++i)
             {
                 mPotentialCells[i] = new PotentialCells();
+            }
+
+            // Build LUT for each type of scan: row, col, block
+            i = 0;
+
+            // By Row
+            for(int row = 0; row < N; ++row)
+            {
+                mPatternLabels[i] = "row " + row;
+                for(int col = 0; col < N; ++col)
+                {
+                    mPatterns[i, col].row = row;
+                    mPatterns[i, col].col = col;
+                }
+                ++i;
+            }
+
+            // By Column
+            for(int col = 0; col < N; ++col)
+            {
+                mPatternLabels[i] = "col " + col;
+                for(int row = 0; row < N; ++row)
+                {
+                    mPatterns[i, row].row = row;
+                    mPatterns[i, row].col = col;
+                }
+                ++i;
+            }
+
+            // By Block
+            for(int br = 0; br < B; ++br)
+            {
+                int rowBegin = br * B;
+                int rowEnd = rowBegin + B;
+
+                for(int bc = 0; bc < B; ++bc)
+                {
+                    int colBegin = bc * B;
+                    int colEnd = colBegin + B;
+                    int j = 0;
+
+                    mPatternLabels[i] = "block " + br + "," + bc;
+
+                    for(int row = rowBegin; row < rowEnd; ++row)
+                    {
+                        for(int col = colBegin; col < colEnd; ++col)
+                        {
+                            mPatterns[i, j].row = row;
+                            mPatterns[i, j].col = col;
+                            ++j;
+                        }
+                    }
+
+                    ++i;
+                }
             }
         }
 
@@ -98,14 +165,18 @@ namespace Babbage
         {
             for(int v = 1, bit = 1; v <= N; ++v, bit <<= 1)
             {
-                for(int row = 0; row < N; ++row)
+                for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
                 {
                     int count = 0;
-                    int col = N;
+                    int isoRow = 0; 
+                    int isoCol = 0; 
 
-                    for(int c = 0; c < N; ++c)
+                    for(int cell = 0; cell < N; ++cell)
                     {
-                        int cellValue = mCells[row, c]; 
+                        int row = mPatterns[pattern, cell].row;
+                        int col = mPatterns[pattern, cell].col;
+
+                        int cellValue = mCells[row, col]; 
 
                         if((cellValue & bit) != 0)
                         {
@@ -122,100 +193,16 @@ namespace Babbage
                                 break;    
                             }
 
-                            col = c;
+                            isoRow = row;
+                            isoCol = col;
                         }
                     }
 
                     if(count == 1)
                     {
-                        Debug.Print("Isolated [" + row + "," + col + "] as " + v + " by row");
-                        mGridView.Rows[row].Cells[col].Value = v;
+                        Debug.Print("Isolated [" + isoRow + "," + isoCol + "] as " + v + " by " + mPatternLabels[pattern]);
+                        mGridView.Rows[isoRow].Cells[isoCol].Value = v;
                         return(true);
-                    }
-                }
-
-                for(int col = 0; col < N; ++col)
-                {
-                    int count = 0;
-                    int row = N;
-
-                    for(int r = 0; r < N; ++r)
-                    {
-                        int cellValue = mCells[r, col]; 
-
-                        if((cellValue & bit) != 0)
-                        {
-                            if((cellValue & CONFIRMED) != 0)
-                            {
-                                count = N;
-                                break;
-                            }
-
-                            ++count;
-
-                            if(count > 1)
-                            {
-                                break;    
-                            }
-
-                            row = r;
-                        }
-                    }
-
-                    if(count == 1)
-                    {
-                        Debug.Print("Isolated [" + row + "," + col + "] as " + v + " by col");
-                        mGridView.Rows[row].Cells[col].Value = v;
-                        return(true);
-                    }
-                }
-
-                for(int br = 0; br < B; ++br)
-                {
-                    int rowBegin = br * B;
-                    int rowEnd = rowBegin + B;
-
-                    for(int bc = 0; bc < B; ++bc)
-                    {
-                        int colBegin = bc * B;
-                        int colEnd = colBegin + B;
-
-                        int count = 0;
-                        int row = N;
-                        int col = N;
-
-                        for(int r = rowBegin; r < rowEnd; ++r)
-                        {
-                            for(int c = colBegin; c < colEnd; ++c)
-                            {
-                                int cellValue = mCells[r, c]; 
-
-                                if((cellValue & bit) != 0)
-                                {
-                                    if((cellValue & CONFIRMED) != 0)
-                                    {
-                                        count = N;
-                                        break;
-                                    }
-
-                                    ++count;
-
-                                    if(count > 1)
-                                    {
-                                        break;    
-                                    }
-
-                                    row = r;
-                                    col = c;
-                                }
-                            }
-                        }
-
-                        if(count == 1)
-                        {
-                            mGridView.Rows[row].Cells[col].Value = v;
-                            return(true);
-                        }
                     }
                 }
             }
@@ -444,105 +431,71 @@ namespace Babbage
 
         private bool FindGroupedExclusions()
         {
-            // value -> cells it is potentially in
+            for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
+            {
+                ResetPotentialCells();
+
+                for(int cell = 0; cell < N; ++cell)
+                {
+                    int row = mPatterns[pattern, cell].row;
+                    int col = mPatterns[pattern, cell].col;
+                    UpdatePotentialCells(mCells[row, col], cell);
+                }
+
+                Array.Sort(mPotentialCells);
+
+                int bitMask;
+
+                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
+                {
+                    int cellMask = mPotentialCells[i].cellMask;
+                    bool excluded = false;
+                    int bit = 1;
+                    
+                    // Do any of the cells referenced in the cellMask have bits not in the bitMask?
+                    for(int cell = 0; (cell < N) && (cellMask != 0); ++cell, bit <<= 1)
+                    {
+                        if((cellMask & bit) != 0)
+                        {
+                            cellMask &= ~bit;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        int row = mPatterns[pattern, cell].row;
+                        int col = mPatterns[pattern, cell].col;
+
+                        Debug.Assert((mCells[row, col] & CONFIRMED) == 0);
+
+                        if((mCells[row, col] & bitMask) != 0)
+                        {
+                            mCells[row, col] &= ~bitMask;
+                            excluded = true;
+                        }
+                    }
+
+                    if(excluded)
+                    {
+                        List<int> values = new List<int>();
+                        int v;
+
+                        for(v = 0, bit = 1; v < N; ++v, bit <<= 1)
+                        {
+                            if((bitMask & bit) == 0)
+                            {
+                                values.Add(v + 1);
+                            }
+                        }
             
-            // By Row
-            for(int row = 0; row < N; ++row)
-            {
-                ResetPotentialCells();
-
-                for(int col = 0; col < N; ++col)
-                {
-                    UpdatePotentialCells(mCells[row, col], col);
-                }
-
-                Array.Sort(mPotentialCells);    
-
-                int bitMask;
-
-                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
-                {
-                    int cellMask = mPotentialCells[i].cellMask;
-                    bool excluded = false;
-                    int bit = 1;
-                    
-                    // Do any of the cells referenced in the cellMask have bits not in the bitMask?
-                    for(int col = 0; (col < N) && (cellMask != 0); ++col, bit <<= 1)
-                    {
-                        if((cellMask & bit) != 0)
-                        {
-                            cellMask &= ~bit;
-                        }
-                        else
-                        {
-                            continue;
-                        }
-
-                        if((mCells[row, col] & bitMask) != 0)
-                        {
-                            mCells[row, col] &= ~bitMask;
-                            excluded = true;
-                        }
-                    }
-
-                    if(excluded)
-                    {
-                        Debug.Print("Masked row " + row + " with exclusion");
+                        String group = String.Join(", ", values.ToArray());
+                        Debug.Print("Excluded group " + group + " in " + mPatternLabels[pattern]);
                         return(true);
                     }
                 }
             }
 
-            // By Column
-            for(int col = 0; col < N; ++col)
-            {
-                ResetPotentialCells();
-
-                for(int row = 0; row < N; ++row)
-                {
-                    UpdatePotentialCells(mCells[row, col], row);
-                }
-
-                Array.Sort(mPotentialCells);    
-
-                int bitMask;
-
-                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
-                {
-                    int cellMask = mPotentialCells[i].cellMask;
-                    bool excluded = false;
-                    int bit = 1;
-                    
-                    // Do any of the cells referenced in the cellMask have bits not in the bitMask?
-                    for(int row = 0; (row < N) && (cellMask != 0); ++row, bit <<= 1)
-                    {
-                        if((cellMask & bit) != 0)
-                        {
-                            cellMask &= ~bit;
-                        }
-                        else
-                        {
-                            continue;
-                        }
-
-                        if((mCells[row, col] & bitMask) != 0)
-                        {
-                            mCells[row, col] &= ~bitMask;
-                            excluded = true;
-                        }
-                    }
-
-                    if(excluded)
-                    {
-                        Debug.Print("Masked col " + col + " with exclusion");
-                        return(true);
-                    }
-                }
-            }
-
-            // TODO: By Block
-
-        
             return(false);
         }
 
@@ -754,7 +707,7 @@ namespace Babbage
                 {
                     if(sample[i] != ' ')
                     {
-                        // mGridView.Rows[row].Cells[col].Value = sample[i];
+                        mGridView.Rows[row].Cells[col].Value = sample[i];
                     }
                 }
             }
