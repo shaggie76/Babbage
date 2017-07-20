@@ -696,8 +696,7 @@ namespace Babbage
 
             mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
 
-            // Sample puzzle copied from http://www.sudoku.com/ (vim select gJ to join without spaces)
-            char[] sample = "   3 2 1  2   6  9  7 8    4      96  3 1 5  69      7    2 9  8  5   2  6 7 1   ".ToCharArray();
+            char[] sample = "6  71 3  1 54 3 8 37    1 49163  2   876 5913  31    67      31 6 9314   31 7    ".ToCharArray();
             Debug.Assert(sample.Length == N * N);
 
             int i = 0;
@@ -707,7 +706,7 @@ namespace Babbage
                 {
                     if(sample[i] != ' ')
                     {
-                        mGridView.Rows[row].Cells[col].Value = sample[i];
+                        // mGridView.Rows[row].Cells[col].Value = sample[i];
                     }
                 }
             }
