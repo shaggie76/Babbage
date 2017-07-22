@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Diagnostics;
+using Microsoft.Win32;
+
+// TODO: study techniques described in http://www.sudokuwiki.org/sudoku.htm
 
 namespace Babbage
 {
@@ -22,9 +21,15 @@ namespace Babbage
         private const int CELL_HEIGHT = 32;
         private const int DIVIDER_SIZE = 2;
 
+        private string REGISTRY_KEY = "HKEY_CURRENT_USER\\Software\\Babbage";
+        private string REGISTRY_BOARD = "Board";
+
         private int[,] mCells = new int[N, N];
         private int mPending = N * N;
         private DataGridView mGridView = new DataGridView();
+
+        private int mRun = 0;
+        private bool mDirty = false;
 
         private struct Coordinates
         {
@@ -65,7 +70,6 @@ namespace Babbage
         public Board()
         {
             InitializeComponent();
-            Application.Idle += HandleApplicationIdle;
             int i;
 
             for(i = 0; i < N; ++i)
@@ -502,6 +506,10 @@ namespace Babbage
         private void HandleApplicationIdle(object sender, EventArgs e)
         {
             Debug.Assert(mPending > 0);
+            Debug.Assert(mRun > 0);
+
+            int prevPending = mPending;
+            bool wasDirty = mDirty;
 
             if
             (
@@ -511,12 +519,24 @@ namespace Babbage
                 FindGroupedExclusions()
             )
             {
-                if(mPending == 0)
+                int found = (prevPending - mPending);
+                mRun -= found;
+
+                if((mRun == 0) || (mPending == 0))
                 {
                     Application.Idle -= HandleApplicationIdle;
                 }
 
-                mGridView.Invalidate();
+                if(found > 0)
+                {
+                    mDirty = wasDirty;
+                    mGridView.Invalidate();
+                }
+            }
+            else
+            {
+                mRun = 0;
+                Application.Idle -= HandleApplicationIdle;
             }
         }
 
@@ -607,6 +627,7 @@ namespace Babbage
             Debug.Assert(parsed && (v >= 1) && (v <= N));
             
             OnValueChanged(r, c, v);
+            mDirty = true;
         }
         
         void ShowCellToolTip(object sender, DataGridViewCellFormattingEventArgs e)
@@ -633,8 +654,76 @@ namespace Babbage
             cell.ToolTipText = String.Join(", ", values.ToArray());
         }
 
+        private void HandleFormClosing(object sender, CancelEventArgs e)
+        {
+            if(!mDirty)
+            {
+                return;
+            }
+
+            DialogResult result = MessageBox.Show("Do you want to save the board before quitting?", "Babbage", MessageBoxButtons.YesNoCancel);
+
+            if(result == DialogResult.Cancel)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            if(result == DialogResult.Yes)
+            {
+                SaveState();
+            }
+        }
+        
+        private void Game_Save(object sender, EventArgs e)
+        {
+            SaveState();
+            mDirty = false;
+        }
+
+        private void Game_Clear(object sender, EventArgs e)
+        {
+            if(MessageBox.Show("Clear the board?", "Babbage", MessageBoxButtons.OKCancel) == DialogResult.OK) 
+            {
+                ResetState();
+            }
+        }
+
+        private void Game_Quit(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void Solver_Run(object sender, EventArgs e)
+        {
+            mRun = N * N;
+            Application.Idle += HandleApplicationIdle;
+        }
+
+        private void Solver_Step(object sender, EventArgs e)
+        {
+            mRun = 1;
+            Application.Idle += HandleApplicationIdle;
+        }
+
         private void Board_Load(object sender, EventArgs e)
         {
+            MainMenu mainMenu = new MainMenu();
+            this.Menu = mainMenu;
+
+            MenuItem game = new MenuItem("Game");
+            mainMenu.MenuItems.Add(game);
+                game.MenuItems.Add("&Save", new EventHandler(Game_Save));
+                game.MenuItems.Add("&Clear", new EventHandler(Game_Clear));
+                game.MenuItems.Add("&Quit", new EventHandler(Game_Quit));
+            MenuItem solver = new MenuItem("Solver");
+            mainMenu.MenuItems.Add(solver);
+                solver.MenuItems.Add("&Run", new EventHandler(Solver_Run));
+                solver.MenuItems.Add("&Step", new EventHandler(Solver_Step));
+            // etc ...
+            
+            this.FormClosing += HandleFormClosing;
+
             this.ClientSize = new Size((N * CELL_WIDTH) + (2 * DIVIDER_SIZE), (N * CELL_HEIGHT) + (2 * DIVIDER_SIZE));
 
             this.Controls.Add(mGridView);
@@ -668,15 +757,7 @@ namespace Babbage
                 col.Width = CELL_WIDTH;
             }
 
-            for(int row = 0; row < N; ++row)
-            {
-                for(int col = 0; col < N; ++col)
-                {
-                    mCells[row,col] = MASK;
-                }
-            }
-
-            mPending = N * N;
+            ResetState();
 
             mGridView.CellValidating += new DataGridViewCellValidatingEventHandler(CellValidating);
             mGridView.CellValueChanged += new DataGridViewCellEventHandler(OnValueChanged);
@@ -696,7 +777,51 @@ namespace Babbage
 
             mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
 
-            char[] sample = "6  71 3  1 54 3 8 37    1 49163  2   876 5913  31    67      31 6 9314   31 7    ".ToCharArray();
+            LoadState();
+        }
+
+        private void SaveState()
+        {
+            string text = "";
+            for(int row = 0; row < N; ++row)
+            {
+                for(int col = 0; col < N; ++col)
+                {
+                    String value = mGridView.Rows[row].Cells[col].Value.ToString();
+
+                    if(string.IsNullOrEmpty(value))
+                    {
+                        text += " ";
+                    }
+                    else
+                    {
+                        Debug.Assert(value.Length == 1);
+                        text += value;
+                    }
+                }
+            }
+
+            Debug.Print("Saving [" + text + "]");
+            Registry.SetValue(REGISTRY_KEY, REGISTRY_BOARD, text);
+        }
+
+        private void LoadState()
+        {
+            string text = (string)Registry.GetValue(REGISTRY_KEY, REGISTRY_BOARD, "");
+
+            if(string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if(text.Length != (N * N))
+            {
+                Debug.Print("Registry state invalid.");
+                return;
+            }
+
+            // text = "6  71 3  1 54 3 8 37    1 49163  2   876 5913  31    67      31 6 9314   31 7    ";
+            char[] sample = text.ToCharArray();
             Debug.Assert(sample.Length == N * N);
 
             int i = 0;
@@ -706,8 +831,31 @@ namespace Babbage
                 {
                     if(sample[i] != ' ')
                     {
-                        // mGridView.Rows[row].Cells[col].Value = sample[i];
+                        mGridView.Rows[row].Cells[col].Value = sample[i];
                     }
+                }
+            }
+
+            mDirty = false;
+        }
+
+        private void ResetState()
+        {
+            for(int row = 0; row < N; ++row)
+            {
+                for(int col = 0; col < N; ++col)
+                {
+                    mCells[row,col] = MASK;
+                }
+            }
+
+            mPending = N * N;
+
+            for(int row = 0; row < N; ++row)
+            {
+                for(int col = 0; col < N; ++col)
+                {
+                    mGridView.Rows[row].Cells[col].Value = "";
                 }
             }
         }
