@@ -7,6 +7,11 @@ using System.Diagnostics;
 using Microsoft.Win32;
 
 // TODO: study techniques described in http://www.sudokuwiki.org/sudoku.htm
+// TODO: undo?
+// TOOD: accelerators
+// TOOD: deleting entry (recalculate)
+
+// Box Line Reduction: if only potential spots in line are in single box: mask rest of box
 
 namespace Babbage
 {
@@ -165,7 +170,7 @@ namespace Babbage
         }
 
         // Finds a value that is isolated by row, column or block
-        private bool FindIsolated()
+        private bool FindHiddenSingles()
         {
             for(int v = 1, bit = 1; v <= N; ++v, bit <<= 1)
             {
@@ -433,7 +438,7 @@ namespace Babbage
             return(N);
         }
 
-        private bool FindGroupedExclusions()
+        private bool FindNakedCandidates()
         {
             for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
             {
@@ -494,7 +499,7 @@ namespace Babbage
                         }
             
                         String group = String.Join(", ", values.ToArray());
-                        Debug.Print("Excluded group " + group + " in " + mPatternLabels[pattern]);
+                        Debug.Print("Naked group " + group + " in " + mPatternLabels[pattern]);
                         return(true);
                     }
                 }
@@ -514,9 +519,9 @@ namespace Babbage
             if
             (
                 FindConfirmed() ||
-                FindIsolated() ||
+                FindHiddenSingles() ||
                 FindCollinear() ||
-                FindGroupedExclusions()
+                FindNakedCandidates()
             )
             {
                 int found = (prevPending - mPending);
