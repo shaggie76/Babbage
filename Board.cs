@@ -11,8 +11,6 @@ using Microsoft.Win32;
 // TOOD: accelerators
 // TOOD: deleting entry (recalculate)
 
-// Box Line Reduction: if only potential spots in line are in single box: mask rest of box
-
 namespace Babbage
 {
     public partial class Board : Form
@@ -156,7 +154,7 @@ namespace Babbage
                     {
                         if((bits & bit) != 0)
                         {
-                            Debug.Print("Confirmed [" + row + "," + col + "] as " + (v + 1));
+                            Debug.Print("[" + row + "," + col + "] = " + (v + 1));
                             mGridView.Rows[row].Cells[col].Value = (v + 1);
                             return(true);
                         }
@@ -209,7 +207,7 @@ namespace Babbage
 
                     if(count == 1)
                     {
-                        Debug.Print("Isolated [" + isoRow + "," + isoCol + "] as " + v + " by " + mPatternLabels[pattern]);
+                        Debug.Print("[" + isoRow + "," + isoCol + "] = " + v + " (Hidden single by " + mPatternLabels[pattern] + ")");
                         mGridView.Rows[isoRow].Cells[isoCol].Value = v;
                         return(true);
                     }
@@ -277,8 +275,8 @@ namespace Babbage
             return(masked);
         }
 
-        // Finds a value that is isolated to a single row or column in 3x3 block
-        private bool FindCollinear()
+        // Finds a value that is isolated to a single row or column within a block
+        private bool MaskCollinear()
         {
             int[] countPerBlock = new int[N];
             int[,] countPerRow = new int[B,N]; // [row,value]
@@ -334,7 +332,7 @@ namespace Babbage
                             {
                                 if(MaskRow(rowBegin + i, v + 1, bc))
                                 {
-                                    Debug.Print("Masked row " + (rowBegin + i) + " with " + (v + 1) + " for block " + bc);
+                                    Debug.Print("Masked row " + (rowBegin + i) + " with " + (v + 1) + " from block " + bc);
                                     return(true);
                                 }
                             }
@@ -342,7 +340,7 @@ namespace Babbage
                             {
                                 if(MaskCol(colBegin + i, v + 1, br))
                                 {
-                                    Debug.Print("Masked col " + (colBegin + i) + " with " + (v + 1) + " for block " + br);
+                                    Debug.Print("Masked col " + (colBegin + i) + " with " + (v + 1) + " from block " + br);
                                     return(true);
                                 }
                             }
@@ -438,6 +436,7 @@ namespace Babbage
             return(N);
         }
 
+        // Naked pairs/triples etc
         private bool FindNakedCandidates()
         {
             for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
@@ -508,6 +507,164 @@ namespace Babbage
             return(false);
         }
 
+        private static int FindIsolatedBlock(int[] blockMasks, int bit)
+        {
+            for(int block = 0; block < B; ++block)
+            {
+                if((blockMasks[block] & bit) == 0)
+                {
+                    continue;
+                }
+
+                for(int next = block + 1; next < B; ++next)
+                {
+                    if((blockMasks[block] & bit) != 0)
+                    {
+                        return(-1);
+                    }
+                }
+
+                return(block);
+            }
+
+            return(-1);
+        }
+
+        // Excludes a value from all elements in a block except for the given row (returns if anything was masked)
+        private bool MaskBlockRows(int blockRow, int blockCol, int bit, int omitRow)
+        {
+            int rowBegin = blockRow * B;
+            int rowEnd = rowBegin + B;
+
+            int colBegin = blockCol * B;
+            int colEnd = colBegin + B;
+
+            bool masked = false;
+
+            for(int row = rowBegin; row < rowEnd; ++row)
+            {
+                if(row == omitRow)
+                {
+                    continue;
+                }
+                
+                for(int col = colBegin; col < colEnd; ++col)
+                {
+                    MaskCell(ref masked, row, col, bit);
+                }
+            }
+
+            return(masked);
+        }
+
+        private bool MaskBlockCols(int blockRow, int blockCol, int bit, int omitCol)
+        {
+            int rowBegin = blockRow * B;
+            int rowEnd = rowBegin + B;
+
+            int colBegin = blockCol * B;
+            int colEnd = colBegin + B;
+
+            bool masked = false;
+
+            for(int col = colBegin; col < colEnd; ++col)
+            {
+                if(col == omitCol)
+                {
+                    continue;
+                }
+                
+                for(int row = rowBegin; row < rowEnd; ++row)
+                {
+                    MaskCell(ref masked, row, col, bit);
+                }
+            }
+
+            return(masked);
+        }
+        
+        // If the only potential spots in a line are confined to a single block: mask rest of block
+        private bool FindBoxLineReduction()
+        {
+            // For each row/colum
+            //    Generate mask for each block of potentials
+            //    For each bit in mask: if bit set in only one block => mask block
+            
+            int[] blockMasks = new int[B];
+
+            for(int row = 0; row < N; ++row)
+            {
+                Array.Clear(blockMasks, 0, blockMasks.Length);
+
+                for(int col = 0; col < N; ++col)
+                {
+                    int bits = mCells[row, col];
+
+                    if((bits & CONFIRMED) != 0)
+                    {
+                        continue;
+                    }
+
+                    int block = (col / B);
+                    blockMasks[block] |= bits;
+                }
+
+                for(int v = 0, bit = 1; v < N; ++v, bit <<= 1)
+                {
+                    int block = FindIsolatedBlock(blockMasks, bit);
+
+                    if(block < 0)
+                    {
+                        continue;
+                    }
+
+                    // Mask v/bit from block:
+                    if(MaskBlockRows(row / B, block, bit, row))
+                    {
+                        Debug.Print("Masked box-" + block + "-row-" + row + " reduction for " + (v + 1));
+                        return(true);
+                    }
+                }
+            }
+
+            for(int col = 0; col < N; ++col)
+            {
+                Array.Clear(blockMasks, 0, blockMasks.Length);
+
+                for(int row = 0; row < N; ++row)
+                {
+                    int bits = mCells[row, col];
+
+                    if((bits & CONFIRMED) != 0)
+                    {
+                        continue;
+                    }
+
+                    int block = (row / B);
+                    blockMasks[block] |= bits;
+                }
+
+                for(int v = 0, bit = 1; v < N; ++v, bit <<= 1)
+                {
+                    int block = FindIsolatedBlock(blockMasks, bit);
+
+                    if(block < 0)
+                    {
+                        continue;
+                    }
+
+                    // Mask v/bit from block:
+                    if(MaskBlockCols(block, col / B, bit, col))
+                    {
+                        Debug.Print("Masked box-" + block + "-col-" + col + " reduction for " + (v + 1));
+                        return(true);
+                    }
+                }
+            }
+
+            return(false);
+        }
+
         private void HandleApplicationIdle(object sender, EventArgs e)
         {
             Debug.Assert(mPending > 0);
@@ -520,22 +677,26 @@ namespace Babbage
             (
                 FindConfirmed() ||
                 FindHiddenSingles() ||
-                FindCollinear() ||
-                FindNakedCandidates()
+                MaskCollinear() ||
+                FindNakedCandidates() ||
+                FindBoxLineReduction()
             )
             {
                 int found = (prevPending - mPending);
-                mRun -= found;
+                --mRun;
 
                 if((mRun == 0) || (mPending == 0))
                 {
                     Application.Idle -= HandleApplicationIdle;
                 }
+                else
+                {
+                    mGridView.Invalidate(); // We need another idle cycle (TODO; improve)
+                }
 
                 if(found > 0)
                 {
                     mDirty = wasDirty;
-                    mGridView.Invalidate();
                 }
             }
             else
@@ -701,7 +862,7 @@ namespace Babbage
 
         private void Solver_Run(object sender, EventArgs e)
         {
-            mRun = N * N;
+            mRun = Int32.MaxValue;
             Application.Idle += HandleApplicationIdle;
         }
 
