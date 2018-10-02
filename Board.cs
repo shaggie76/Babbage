@@ -403,7 +403,7 @@ namespace Babbage
 
                 int end = i + pc.cellCount;
 
-                if(end >= N)
+                if(end > N)
                 {
                     break;
                 }
