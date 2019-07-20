@@ -436,8 +436,25 @@ namespace Babbage
             return(N);
         }
 
-        // Naked pairs/triples etc
-        private bool FindNakedCandidates()
+        private String GetGroupName(int bitMask)
+        {
+            List<int> values = new List<int>();
+            int v;
+            int bit;
+
+            for(v = 0, bit = 1; v < N; ++v, bit <<= 1)
+            {
+                if((bitMask & bit) != 0)
+                {
+                    values.Add(v + 1);
+                }
+            }
+            
+            return("[" + String.Join(", ", values.ToArray())+ "]");
+        }
+
+        // Naked pairs/triples etc that only show up in exactly 2/3 places in a pattern
+        private bool FindNaked()
         {
             for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
             {
@@ -486,24 +503,111 @@ namespace Babbage
 
                     if(excluded)
                     {
-                        List<int> values = new List<int>();
-                        int v;
-
-                        for(v = 0, bit = 1; v < N; ++v, bit <<= 1)
-                        {
-                            if((bitMask & bit) == 0)
-                            {
-                                values.Add(v + 1);
-                            }
-                        }
-            
-                        String group = String.Join(", ", values.ToArray());
-                        Debug.Print("Naked group " + group + " in " + mPatternLabels[pattern]);
+                        Debug.Print("Naked group " + GetGroupName(bitMask) + " in " + mPatternLabels[pattern]);
                         return(true);
                     }
                 }
             }
 
+            return(false);
+        }
+
+        // Finds isolated pairs/triples in a pattern
+        private bool FindNakedIsolated()
+        {
+            int[] isolatedCells = new int[N];
+
+            for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
+            {
+                for(int cell0 = 0; (cell0 + 1) < N; ++cell0)
+                {
+                    int row0 = mPatterns[pattern, cell0].row;
+                    int col0 = mPatterns[pattern, cell0].col;
+
+                    int bits0 = mCells[row0, col0]; 
+
+                    if((bits0 & CONFIRMED) != 0)
+                    {
+                        continue;
+                    }
+
+                    int bitCount = BitCount(bits0);
+                    Debug.Assert(bitCount > 0);
+
+                    if(cell0 + bitCount >= N)
+                    {
+                        continue;
+                    }
+
+                    int isolatedBits = bits0;
+                    int numIsolated = 0;
+                    isolatedCells[numIsolated++] = cell0;
+
+                    for(int cell1 = cell0+1; cell1 < N; ++cell1)
+                    {
+                        int row1 = mPatterns[pattern, cell1].row;
+                        int col1 = mPatterns[pattern, cell1].col;
+                    
+                        int bits1 = mCells[row1, col1];
+                        
+                        if(bits0 == bits1)
+                        {
+                            isolatedCells[numIsolated++] = cell1;
+#if !(DEBUG)
+                            if(numIsolated == bitCount)
+                            {
+                                break;
+                            }
+#endif
+                        }
+                    }
+                    Debug.Assert(numIsolated <= bitCount);
+
+                    if(numIsolated != bitCount)
+                    {
+                        continue;
+                    }
+
+                    bool excluded = false;
+                    
+                    // mask out bits from cells in cells not isolated in pattern
+                    int isolatedIndex = 0;
+
+                    for(int cell = 0; cell < N; ++cell)
+                    {
+                        if(cell == isolatedCells[isolatedIndex])
+                        {
+                            ++isolatedIndex;
+                            continue;
+                        }
+
+                        int row = mPatterns[pattern, cell].row;
+                        int col = mPatterns[pattern, cell].col;
+
+                        int bits = mCells[row, col]; 
+
+                        if((bits & CONFIRMED) != 0)
+                        {
+                            continue;
+                        }
+
+                        if((bits & isolatedBits) != 0)
+                        {
+                            mCells[row, col] = bits & ~isolatedBits;
+                            excluded = true;
+                        }
+                    }
+
+                    if(excluded)
+                    {
+                        var icells = new ArraySegment<int>(isolatedCells, 0, numIsolated);
+                        String cells = String.Join(", ", icells);
+
+                        Debug.Print("Naked isolated group " + GetGroupName(isolatedBits) + " in " + mPatternLabels[pattern] + " at cells " + cells);
+                        return(true);
+                    }
+                }
+            }
             return(false);
         }
 
@@ -678,8 +782,9 @@ namespace Babbage
                 FindConfirmed() ||
                 FindHiddenSingles() ||
                 MaskCollinear() ||
-                FindNakedCandidates() ||
-                FindBoxLineReduction()
+                FindNaked() ||
+                FindBoxLineReduction() ||
+                FindNakedIsolated()
             )
             {
                 int found = (prevPending - mPending);
