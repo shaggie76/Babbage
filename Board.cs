@@ -63,7 +63,8 @@ namespace Babbage
         };
 
         private PotentialCells[] mPotentialCells = new PotentialCells[N];
-        
+        private int[] mIsolatedCells = new int[N];
+
         static int BitCount(int bits)
         {
            // Works for at most 14-bit values
@@ -351,18 +352,7 @@ namespace Babbage
 
             return(false);
         }
-
-        private void ResetPotentialCells()
-        {
-            for(int i = 0; i < N; ++i)
-            {
-                PotentialCells pc = mPotentialCells[i];
-                pc.number = i;
-                pc.cellMask = 0;
-                pc.cellCount = 0;
-            }
-        }
-
+        
         // cellNumber can be row, col or block index
         // Transpose bits (possible values in cell)
         // to cellMask (possible cells with value)
@@ -384,8 +374,26 @@ namespace Babbage
                 }
             }
         }
+
+        private void GetPotentialCells(int pattern)
+        {
+            for(int i = 0; i < N; ++i)
+            {
+                PotentialCells pc = mPotentialCells[i];
+                pc.number = i;
+                pc.cellMask = 0;
+                pc.cellCount = 0;
+            }
+
+            for(int cell = 0; cell < N; ++cell)
+            {
+                int row = mPatterns[pattern, cell].row;
+                int col = mPatterns[pattern, cell].col;
+                UpdatePotentialCells(mCells[row, col], cell);
+            }
+        }
         
-        private int FindPotentialCellSet(int begin, out int bitMask)
+        private int FindNakedPair(int begin, out int bitMask)
         {
             bitMask = 0;
 
@@ -395,7 +403,7 @@ namespace Babbage
             {
                 PotentialCells pc = mPotentialCells[i];
 
-                if(pc.cellCount == 0)
+                if(pc.cellCount != 2)
                 {
                     ++i;
                     continue;
@@ -453,25 +461,17 @@ namespace Babbage
             return("[" + String.Join(", ", values.ToArray())+ "]");
         }
 
-        // Naked pairs/triples etc that only show up in exactly 2/3 places in a pattern
-        private bool FindNaked()
+        // Naked pairs only show up in exactly 2 places in a pattern
+        private bool FindNakedPairs()
         {
             for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
             {
-                ResetPotentialCells();
-
-                for(int cell = 0; cell < N; ++cell)
-                {
-                    int row = mPatterns[pattern, cell].row;
-                    int col = mPatterns[pattern, cell].col;
-                    UpdatePotentialCells(mCells[row, col], cell);
-                }
-
+                GetPotentialCells(pattern);
                 Array.Sort(mPotentialCells);
 
                 int bitMask;
 
-                for(int i = FindPotentialCellSet(0, out bitMask); i < N; i = FindPotentialCellSet(i + mPotentialCells[i].cellCount, out bitMask))
+                for(int i = FindNakedPair(0, out bitMask); i < N; i = FindNakedPair(i + mPotentialCells[i].cellCount, out bitMask))
                 {
                     int cellMask = mPotentialCells[i].cellMask;
                     bool excluded = false;
@@ -503,7 +503,7 @@ namespace Babbage
 
                     if(excluded)
                     {
-                        Debug.Print("Naked group " + GetGroupName(bitMask) + " in " + mPatternLabels[pattern]);
+                        Debug.Print("Naked pair " + GetGroupName(~bitMask) + " in " + mPatternLabels[pattern]);
                         return(true);
                     }
                 }
@@ -512,11 +512,93 @@ namespace Babbage
             return(false);
         }
 
-        // Finds isolated pairs/triples in a pattern
-        private bool FindNakedIsolated()
+        private bool FindNakedTriples()
         {
-            int[] isolatedCells = new int[N];
+            for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
+            {
+                GetPotentialCells(pattern);
 
+                for(int i = 0; i < (N - 2); ++i)
+                {
+                    ref PotentialCells iCell = ref mPotentialCells[i];
+
+                    if((iCell.cellCount < 2) || (iCell.cellCount > 3))
+                    {
+                        continue;
+                    }
+
+                    for(int j = i + 1; j < (N - 1); ++j)
+                    {
+                        ref PotentialCells jCell = ref mPotentialCells[j];
+
+                        if((jCell.cellCount < 2) || (jCell.cellCount > 3))
+                        {
+                            continue;
+                        }
+
+                        for(int k = j + 1; k < N; ++k)
+                        {
+                            ref PotentialCells kCell = ref mPotentialCells[k];
+
+                            if((kCell.cellCount < 2) || (kCell.cellCount > 3))
+                            {
+                                continue;
+                            }
+
+                            int cellMask = iCell.cellMask | jCell.cellMask | kCell.cellMask;
+
+                            if(BitCount(cellMask) != 3)
+                            {
+                                continue;
+                            }
+
+                            // Confirmed a naked triple; but is it new?
+
+                            int bitMask = ~((1 << iCell.number) | (1 << jCell.number) | (1 << kCell.number));
+
+                            bool excluded = false;
+                            int bit = 1;
+                    
+                            // Do any of the cells referenced in the cellMask have bits not in the bitMask?
+                            for(int cell = 0; (cell < N) && (cellMask != 0); ++cell, bit <<= 1)
+                            {
+                                if((cellMask & bit) != 0)
+                                {
+                                    cellMask &= ~bit;
+                                }
+                                else
+                                {
+                                    continue;
+                                }
+
+                                int row = mPatterns[pattern, cell].row;
+                                int col = mPatterns[pattern, cell].col;
+
+                                Debug.Assert((mCells[row, col] & CONFIRMED) == 0);
+
+                                if((mCells[row, col] & bitMask) != 0)
+                                {
+                                    mCells[row, col] &= ~bitMask;
+                                    excluded = true;
+                                }
+                            }
+
+                            if(excluded)
+                            {
+                                Debug.Print("Naked triple " + GetGroupName(~bitMask) + " in " + mPatternLabels[pattern]);
+                                return(true);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return(false);
+        }
+
+        // Finds isolated pairs/triples in a pattern
+        private bool FindIsolated()
+        {
             for(int pattern = 0; pattern < NUM_PATTERNS; ++pattern)
             {
                 for(int cell0 = 0; (cell0 + 1) < N; ++cell0)
@@ -541,7 +623,7 @@ namespace Babbage
 
                     int isolatedBits = bits0;
                     int numIsolated = 0;
-                    isolatedCells[numIsolated++] = cell0;
+                    mIsolatedCells[numIsolated++] = cell0;
 
                     for(int cell1 = cell0+1; cell1 < N; ++cell1)
                     {
@@ -552,7 +634,7 @@ namespace Babbage
                         
                         if(bits0 == bits1)
                         {
-                            isolatedCells[numIsolated++] = cell1;
+                            mIsolatedCells[numIsolated++] = cell1;
 #if !(DEBUG)
                             if(numIsolated == bitCount)
                             {
@@ -575,7 +657,7 @@ namespace Babbage
 
                     for(int cell = 0; cell < N; ++cell)
                     {
-                        if(cell == isolatedCells[isolatedIndex])
+                        if(cell == mIsolatedCells[isolatedIndex])
                         {
                             ++isolatedIndex;
                             continue;
@@ -600,10 +682,11 @@ namespace Babbage
 
                     if(excluded)
                     {
-                        var icells = new ArraySegment<int>(isolatedCells, 0, numIsolated);
+                        var icells = new ArraySegment<int>(mIsolatedCells, 0, numIsolated);
                         String cells = String.Join(", ", icells);
+                        var noun = (numIsolated == 2) ? "pair" : "group";
 
-                        Debug.Print("Naked isolated group " + GetGroupName(isolatedBits) + " in " + mPatternLabels[pattern] + " at cells " + cells);
+                        Debug.Print("Naked isolated " + noun + " " + GetGroupName(isolatedBits) + " in " + mPatternLabels[pattern] + " at cells " + cells);
                         return(true);
                     }
                 }
@@ -782,9 +865,10 @@ namespace Babbage
                 FindConfirmed() ||
                 FindHiddenSingles() ||
                 MaskCollinear() ||
-                FindNaked() ||
+                FindNakedPairs() ||
                 FindBoxLineReduction() ||
-                FindNakedIsolated()
+                FindIsolated() ||
+                FindNakedTriples()
             )
             {
                 int found = (prevPending - mPending);
@@ -797,6 +881,14 @@ namespace Babbage
                 else
                 {
                     mGridView.Invalidate(); // We need another idle cycle (TODO; improve)
+
+                    //for(int row = 0; row < N; ++row)
+                    //{
+                    //    for(int col = 0; col < N; ++col)
+                    //    {
+                    //        string value = mGridView.Rows[row].Cells[col].FormattedValue.ToString();
+                    //    }
+                    //}
                 }
 
                 if(found > 0)
@@ -886,7 +978,15 @@ namespace Babbage
         {
             int r = e.RowIndex;
             int c = e.ColumnIndex;
-            string value = mGridView.Rows[r].Cells[c].Value.ToString();
+
+            object cellValue = mGridView.Rows[r].Cells[c].Value;
+
+            if(cellValue == null)
+            {
+                return;
+            }
+
+            string value = cellValue.ToString();
 
             if(string.IsNullOrEmpty(value))
             {
@@ -1058,7 +1158,14 @@ namespace Babbage
             {
                 for(int col = 0; col < N; ++col)
                 {
-                    String value = mGridView.Rows[row].Cells[col].Value.ToString();
+                    object cellValue = mGridView.Rows[row].Cells[col].Value;
+
+                    if(cellValue == null)
+                    {
+                        continue;
+                    }
+
+                    string value = cellValue.ToString();
 
                     if(string.IsNullOrEmpty(value))
                     {
