@@ -705,7 +705,7 @@ namespace Babbage
 
                 for(int next = block + 1; next < B; ++next)
                 {
-                    if((blockMasks[block] & bit) != 0)
+                    if((blockMasks[next] & bit) != 0)
                     {
                         return(-1);
                     }
