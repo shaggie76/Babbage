@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Diagnostics;
+
 using Microsoft.Win32;
 
 // TODO: study techniques described in http://www.sudokuwiki.org/sudoku.htm
@@ -1095,7 +1096,13 @@ namespace Babbage
             
             this.FormClosing += HandleFormClosing;
 
-            this.ClientSize = new Size((N * CELL_WIDTH) + (2 * DIVIDER_SIZE), (N * CELL_HEIGHT) + (2 * DIVIDER_SIZE));
+            int cellWidth = this.LogicalToDeviceUnits(CELL_WIDTH);
+            int cellHeight = this.LogicalToDeviceUnits(CELL_HEIGHT);
+            int dividerSize2 = (2 * DIVIDER_SIZE);
+
+            this.ClientSize = new Size((N * cellWidth) + dividerSize2, (N * cellHeight) + dividerSize2);
+
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
 
             this.Controls.Add(mGridView);
 
@@ -1118,14 +1125,14 @@ namespace Babbage
 
             mGridView.CellFormatting += ShowCellToolTip;
 
-            foreach(DataGridViewRow row in mGridView.Rows)
-            {
-                row.Height = CELL_HEIGHT;
-            }
-
             foreach(DataGridViewColumn col in mGridView.Columns)
             {
-                col.Width = CELL_WIDTH;
+                col.Width = cellWidth;
+            }
+
+            foreach(DataGridViewRow row in mGridView.Rows)
+            {
+                row.Height = cellHeight;
             }
 
             ResetState();
@@ -1146,7 +1153,7 @@ namespace Babbage
                 }
             }
 
-            mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, 14);
+            mGridView.DefaultCellStyle.Font = new Font(mGridView.Font.Name, this.LogicalToDeviceUnits(13));
 
             LoadState();
         }
